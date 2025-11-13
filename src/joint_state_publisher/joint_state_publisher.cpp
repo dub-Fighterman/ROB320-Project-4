@@ -46,10 +46,19 @@ JointStatePublisher::JointStatePublisher(const rix::ipc::Endpoint &rixhub_endpoi
 
 /**< TODO: Implement the joint_state_callback method. */
 void JointStatePublisher::joint_state_callback(const rix::msg::sensor::JS &msg) {
-    return;
+    std::lock_guard<std::mutex> lock(robot_mutex_);
+    robot_->set_state(msg);
 }
 
 /**< TODO: Implement the timer_callback method. */
 void JointStatePublisher::timer_callback(const rix::core::Timer::Event &event) {
-    return;
+    if (!joint_state_pub_ || !joint_state_pub_->ok()) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(robot_mutex_);
+    auto joint_states = robot_->get_joint_states();
+    auto stamp = event.current_real;
+    joint_states.stamp = stamp.to_msg();
+    joint_state_pub_->publish(joint_states);
 }

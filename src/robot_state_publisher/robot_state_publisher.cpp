@@ -36,5 +36,33 @@ RobotStatePublisher::RobotStatePublisher(const rix::ipc::Endpoint& rixhub_endpoi
 
 /**< TODO: Implement joint_state_callback method */
 void RobotStatePublisher::joint_state_callback(const rix::msg::sensor::JS& msg) {
-    return;
+    if (!robot_) {
+        return;
+    }
+
+    robot_->set_state(msg);
+
+    rix::util::Time stamp = ignore_timestamps_ ? rix::util::Time::now() : rix::util::Time(msg.stamp);
+
+    if (static_tf_.transforms.empty()) {
+        static_tf_ = robot_->get_static_transforms();
+        for (auto& transform : static_tf_.transforms) {
+            transform.header.stamp = stamp.to_msg();
+        }
+        if (!static_tf_.transforms.empty()) {
+            tf_broadcaster_.send(static_tf_);
+        }
+    }
+
+    if ((stamp - last_publish_time_) < period_) {
+        return;
+    }
+
+    last_publish_time_ = stamp;
+
+    auto tf = robot_->get_transforms();
+    for (auto& transform : tf.transforms) {
+        transform.header.stamp = stamp.to_msg();
+    }
+    tf_broadcaster_.send(tf);
 }

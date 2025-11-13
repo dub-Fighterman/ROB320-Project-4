@@ -119,17 +119,118 @@ std::vector<std::shared_ptr<Link>> RobotModel::get_end_effectors() const {
 
 /**< TODO: Implement the get_joints_in_chain method */
 std::vector<std::shared_ptr<Joint>> RobotModel::get_joints_in_chain(const std::string &link_name) const {
-    return {};
+    std::vector<std::shared_ptr<Joint>> joints_in_chain;
+
+    auto link_it = links.find(link_name);
+    if (link_it == links.end()) {
+        return joints_in_chain;
+    }
+
+    std::stack<std::shared_ptr<Joint>> stack;
+    auto current_link = link_it->second;
+
+    while (current_link && !current_link->is_root()) {
+        const std::string &parent_joint_name = current_link->parent();
+        if (parent_joint_name.empty()) {
+            break;
+        }
+
+        auto joint_it = joints.find(parent_joint_name);
+        if (joint_it == joints.end()) {
+            break;
+        }
+
+        stack.push(joint_it->second);
+
+        auto parent_link_it = links.find(joint_it->second->parent());
+        if (parent_link_it == links.end()) {
+            break;
+        }
+
+        current_link = parent_link_it->second;
+    }
+
+    while (!stack.empty()) {
+        joints_in_chain.push_back(stack.top());
+        stack.pop();
+    }
+
+    return joints_in_chain;
 }
 
 /**< TODO: Implement the get_transforms method */
 rix::msg::geometry::TF RobotModel::get_transforms() const {
-    return {};
+    rix::msg::geometry::TF tf;
+
+    if (!is_valid()) {
+        return tf;
+    }
+
+    rix::msg::geometry::TransformStamped transform;
+    transform.header.stamp = rix::util::Time::now().to_msg();
+    transform.header.seq = 0;
+
+    if (!root.empty()) {
+        transform.header.frame_id = "world";
+        transform.child_frame_id = root;
+        transform.transform = world_to_root;
+        tf.transforms.push_back(transform);
+        transform.header.seq++;
+    }
+
+    if (root.empty()) {
+        return tf;
+    }
+
+    std::vector<std::string> stack;
+    stack.push_back(root);
+
+    while (!stack.empty()) {
+        std::string current_link_name = stack.back();
+        stack.pop_back();
+
+        auto link_it = links.find(current_link_name);
+        if (link_it == links.end()) {
+            continue;
+        }
+
+        for (const auto &joint_name : link_it->second->children()) {
+            auto joint_it = joints.find(joint_name);
+            if (joint_it == joints.end()) {
+                continue;
+            }
+
+            const auto &joint = joint_it->second;
+            transform.header.frame_id = joint->parent();
+            transform.child_frame_id = joint->child();
+
+            if (joint->is_mimic()) {
+                transform.transform = joint->origin();
+            } else {
+                transform.transform = joint->transform();
+            }
+            tf.transforms.push_back(transform);
+            transform.header.seq++;
+
+            if (links.find(joint->child()) != links.end()) {
+                stack.push_back(joint->child());
+            }
+        }
+    }
+
+    return tf;
 }
 
 /**< TODO: Implement the get_joint_states method */
 rix::msg::sensor::JS RobotModel::get_joint_states() const {
-    return {};
+    rix::msg::sensor::JS js;
+    js.stamp = rix::util::Time::now().to_msg();
+
+    for (const auto &pair : joints) {
+        js.joint_states.push_back(pair.second->get_state());
+    }
+
+    return js;
 }
 
 rix::msg::geometry::TF RobotModel::get_static_transforms() const {
