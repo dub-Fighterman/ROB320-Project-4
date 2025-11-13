@@ -44,25 +44,16 @@ void RobotStatePublisher::joint_state_callback(const rix::msg::sensor::JS& msg) 
 
     rix::util::Time stamp = ignore_timestamps_ ? rix::util::Time::now() : rix::util::Time(msg.stamp);
 
-    if (static_tf_.transforms.empty()) {
-        static_tf_ = robot_->get_static_transforms();
-        for (auto& transform : static_tf_.transforms) {
-            transform.header.stamp = stamp.to_msg();
-        }
-        if (!static_tf_.transforms.empty()) {
-            tf_broadcaster_.send(static_tf_);
-        }
-    }
-
-    if ((stamp - last_publish_time_) < period_) {
+    if (last_publish_time_.to_nanoseconds() != 0 && (stamp - last_publish_time_) < period_) {
         return;
     }
 
     last_publish_time_ = stamp;
 
     auto tf = robot_->get_transforms();
+    auto stamp_msg = stamp.to_msg();
     for (auto& transform : tf.transforms) {
-        transform.header.stamp = stamp.to_msg();
+        transform.header.stamp = stamp_msg;
     }
     tf_broadcaster_.send(tf);
 }
